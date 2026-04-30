@@ -1,0 +1,163 @@
+services:
+  portainer:
+    # Image de portainer officielle (ce=community edition, alpine=légère) 
+    image: portainer/portainer-ce:alpine
+    # Nom donné au conteneur 
+    container_name: portainer
+    # Dans le cas où le conteneur s'arrête/crash, il est automatiquement relancé 
+    restart: unless-stopped
+    # Réseau docker dans lequel le conteneur va s'exécuter
+    networks: 
+      - cloud
+    # Mappage de port (du port 9000 du conteneur vers le port 9000 de la machine hôte)
+    # ports:
+    #  - 9000:9000
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.portainer.rule=Host(`portainer.${MY_DOMAIN}`)'
+      - 'traefik.http.routers.portainer.entryPoints=websecure'
+      - 'traefik.http.services.portainer.loadbalancer.server.port=9000'
+      - 'traefik.http.routers.portainer.service=portainer'
+    # Volumes 
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+  db:
+    image: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    networks:
+      - blogverse-network
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: amineelghazi100/2389824-blogverse-backend:4.0
+    build:
+      context: ./2389824-blogverse-backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      PORT: ${BACKEND_PORT:-3001}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+    networks:
+      - blogverse-network
+      - cloud
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.backend.rule=Host(`backend.${MY_DOMAIN}`)'
+      - 'traefik.http.routers.backend.entryPoints=websecure'
+      - 'traefik.http.services.backend.loadbalancer.server.port=3001'
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: amineelghazi100/2389824-blogverse-frontend:2.0
+    build:
+      context: ./2389824-blogverse-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    restart: unless-stopped
+    networks:
+      - blogverse-network
+      - cloud
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.blogverse.rule=Host(`blogverse.${MY_DOMAIN}`)'
+      - 'traefik.http.routers.blogverse.entryPoints=websecure'
+    depends_on:
+      - backend
+
+ 
+
+  jellyfin:
+    # Image jellyfin officielle
+    image: jellyfin/jellyfin:latest
+    # Nom donné au conteneur 
+    container_name: jellyfin
+    # Dans le cas où le conteneur s'arrête/crash, il est automatiquement relancé 
+    restart: unless-stopped
+    # Réseau dans lequel le conteneur va s'exécuter
+    networks: 
+      - cloud
+    # Mappage de port (du port 8096 du conteneur vers le port 8096 de la machine hôte)
+    # ports:
+    #   - 8096:8096
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.jellyfin.rule=Host(`jellyfin.${MY_DOMAIN}`)'
+      - 'traefik.http.routers.jellyfin.entryPoints=websecure'
+    environment:
+      - TZ=America/Montreal
+    # Volumes du conteneur: mappe des répertoires du conteneur vers des répertoire de la machine hôte
+    volumes:
+      - jellyfin_data:/config
+      - /mnt/media/Movies:/movies
+      - /mnt/media/TV:/tv
+
+  proxy:
+      image: traefik
+      container_name: traefik
+      restart: unless-stopped
+      networks: 
+          - cloud
+      command:
+        - '--log.level=DEBUG'
+        - '--api.insecure=true'
+        - '--providers.docker=true'
+        - '--providers.docker.exposedbydefault=false'
+        - '--certificatesresolvers.letsencrypt.acme.dnschallenge=true'
+        - '--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=duckdns'
+        - '--certificatesresolvers.letsencrypt.acme.email=${MY_EMAIL}'
+        - '--certificatesresolvers.letsencrypt.acme.dnschallenge.disablePropagationCheck=true'
+        - '--certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53'
+        - '--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json'
+        - '--entrypoints.web.address=:80'
+        - '--entrypoints.web.http.redirections.entrypoint.to=websecure'
+        - '--entrypoints.web.http.redirections.entrypoint.scheme=https'
+        - '--entrypoints.websecure.address=:443'
+        - '--entrypoints.websecure.http.tls=true'
+        - '--entrypoints.websecure.http.tls.certResolver=letsencrypt'
+        - '--entrypoints.websecure.http.tls.domains[0].main=${MY_DOMAIN}'
+        - '--entrypoints.websecure.http.tls.domains[0].sans=*.${MY_DOMAIN}'
+      volumes:
+        - '../data/traefik/letsencrypt:/letsencrypt'
+        - '/var/run/docker.sock:/var/run/docker.sock:ro'
+      labels:
+        - 'traefik.enable=true'
+        - 'traefik.http.routers.api.rule=Host(`${MY_DOMAIN}`)'
+        - 'traefik.http.routers.api.entryPoints=websecure'
+        - 'traefik.http.routers.api.service=api@internal'
+      ports:
+        - '443:443'
+        - '80:80'
+      environment:
+        - 'DUCKDNS_TOKEN=${DUCKDNS_TOKEN}'
+
+volumes:
+    db_data:
+    portainer_data:
+    jellyfin_data:
+
+networks:
+    blogverse-network:
+        driver: bridge
+    cloud:
+        driver: bridge
