@@ -19,8 +19,7 @@ Tout le trafic externe passe par Traefik (ports 80/443), qui redirige le HTTP ve
 
 - Docker et Docker Compose installés
 - Accès `sudo` sur la machine hôte
-- Un nom de domaine pointant vers le serveur, avec les sous-domaines (`*.${MY_DOMAIN}`)
-- Un compte DuckDNS avec un token valide (challenge DNS pour Let's Encrypt)
+- Un compte DuckDNS avec un sous-domaine créé (ex : `votre-nom.duckdns.org`) et un token valide (challenge DNS pour Let's Encrypt)
 - Dossiers média présents sur l'hôte pour Jellyfin : `/mnt/media/Movies` et `/mnt/media/TV`
 
 ## Variables d'environnement
@@ -29,17 +28,18 @@ Tout le trafic externe passe par Traefik (ports 80/443), qui redirige le HTTP ve
 
 | Variable | Description |
 |---|---|
-| `MY_DOMAIN` | Domaine principal (ex : `example.com`) |
-| `MY_EMAIL` | Email utilisé pour Let's Encrypt |
-| `DUCKDNS_TOKEN` | Token DuckDNS pour le challenge DNS |
 | `MYSQL_ROOT_PASSWORD` | Mot de passe root MySQL |
 | `MYSQL_DATABASE` | Nom de la base de données |
 | `MYSQL_USER` | Utilisateur MySQL |
 | `MYSQL_PASSWORD` | Mot de passe de l'utilisateur MySQL |
-| `BACKEND_PORT` | Port interne du backend (défaut : `3001`) |
+| `MY_EMAIL` | Adresse courriel utilisée pour Let's Encrypt |
+| `MY_DOMAIN` | Domaine DuckDNS (ex : `votre-nom.duckdns.org`) |
+| `DUCKDNS_TOKEN` | Token de votre compte DuckDNS |
+| `NODE_ENV` | Environnement d'exécution du backend (ex : `development`) |
 | `JWT_SECRET` | Clé secrète pour la signature des JWT |
-| `JWT_EXPIRES_IN` | Durée de validité des tokens JWT (défaut : `7d`) |
-| `VITE_API_URL` | URL de l'API utilisée par le frontend au build |
+| `BACKEND_PORT` | Port interne du backend (défaut : `3001`) |
+| `FRONTEND_PORT` | Port interne du frontend (défaut : `8080`) |
+| `VITE_API_URL` | URL de l'API utilisée par le frontend au build (ex : `https://backend.votre-nom.duckdns.org`) |
 
 ## Installation
 
